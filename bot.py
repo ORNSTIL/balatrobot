@@ -80,49 +80,56 @@ class Bot:
 
         self.state = {}
 
-    def skip_or_select_blind(self):
+    def skip_or_select_blind(self, G):
         raise NotImplementedError(
             "Error: Bot.skip_or_select_blind must be implemented."
         )
 
-    def select_cards_from_hand(self):
+    def select_cards_from_hand(self, G):
         raise NotImplementedError(
             "Error: Bot.select_cards_from_hand must be implemented."
         )
 
-    def select_shop_action(self):
+    def select_shop_action(self, G):
         raise NotImplementedError("Error: Bot.select_shop_action must be implemented.")
 
-    def select_booster_action(self):
+    def select_booster_action(self, G):
         raise NotImplementedError(
             "Error: Bot.select_booster_action must be implemented."
         )
 
-    def sell_jokers(self):
+    def sell_jokers(self, G):
         raise NotImplementedError("Error: Bot.sell_jokers must be implemented.")
 
-    def rearrange_jokers(self):
+    def rearrange_jokers(self, G):
         raise NotImplementedError("Error: Bot.rearrange_jokers must be implemented.")
 
-    def use_or_sell_consumables(self):
+    def use_or_sell_consumables(self, G):
         raise NotImplementedError(
             "Error: Bot.use_or_sell_consumables must be implemented."
         )
 
-    def rearrange_consumables(self):
+    def rearrange_consumables(self, G):
         raise NotImplementedError(
             "Error: Bot.rearrange_consumables must be implemented."
         )
 
-    def rearrange_hand(self):
+    def rearrange_hand(self, G):
         raise NotImplementedError("Error: Bot.rearrange_hand must be implemented.")
 
     def start_balatro_instance(self):
         balatro_exec_path = (
-            r"C:\Program Files (x86)\Steam\steamapps\common\Balatro\Balatro.exe"
+            r"/usr/bin/env"
         )
         self.balatro_instance = subprocess.Popen(
-            [balatro_exec_path, str(self.bot_port)]
+            [balatro_exec_path,
+             'WINEDLLOVERRIDES=version=n,b',
+             'STEAM_COMPAT_CLIENT_INSTALL_PATH=/home/benja/.local/share/Steam',
+             'STEAM_COMPAT_DATA_PATH=/home/benja/.local/share/Steam/steamapps/compatdata/2379780',
+             '/home/benja/.local/share/Steam/compatibilitytools.d/GE-Proton9-4/proton',
+             'waitforexitandrun',
+             '/home/benja/.local/share/Steam/steamapps/common/Balatro/Balatro.exe',
+             str(self.bot_port)]
         )
 
     def stop_balatro_instance(self):
@@ -148,15 +155,15 @@ class Bot:
 
     def verifyimplemented(self):
         try:
-            self.skip_or_select_blind(self, {})
-            self.select_cards_from_hand(self, {})
-            self.select_shop_action(self, {})
-            self.select_booster_action(self, {})
-            self.sell_jokers(self, {})
-            self.rearrange_jokers(self, {})
-            self.use_or_sell_consumables(self, {})
-            self.rearrange_consumables(self, {})
-            self.rearrange_hand(self, {})
+            self.skip_or_select_blind({})
+            self.select_cards_from_hand({})
+            self.select_shop_action({})
+            self.select_booster_action({})
+            self.sell_jokers({})
+            self.rearrange_jokers({})
+            self.use_or_sell_consumables({})
+            self.rearrange_consumables({})
+            self.rearrange_hand({})
         except NotImplementedError as e:
             print(e)
             sys.exit(0)
@@ -184,23 +191,23 @@ class Bot:
                     self.challenge,
                 ]
             case "skip_or_select_blind":
-                return self.skip_or_select_blind(self, self.G)
+                return self.skip_or_select_blind(self.G)
             case "select_cards_from_hand":
-                return self.select_cards_from_hand(self, self.G)
+                return self.select_cards_from_hand(self.G)
             case "select_shop_action":
-                return self.select_shop_action(self, self.G)
+                return self.select_shop_action(self.G)
             case "select_booster_action":
-                return self.select_booster_action(self, self.G)
+                return self.select_booster_action(self.G)
             case "sell_jokers":
-                return self.sell_jokers(self, self.G)
+                return self.sell_jokers(self.G)
             case "rearrange_jokers":
-                return self.rearrange_jokers(self, self.G)
+                return self.rearrange_jokers(self.G)
             case "use_or_sell_consumables":
-                return self.use_or_sell_consumables(self, self.G)
+                return self.use_or_sell_consumables(self.G)
             case "rearrange_consumables":
-                return self.rearrange_consumables(self, self.G)
+                return self.rearrange_consumables(self.G)
             case "rearrange_hand":
-                return self.rearrange_hand(self, self.G)
+                return self.rearrange_hand(self.G)
 
     def run_step(self):
         if self.sock is None:

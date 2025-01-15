@@ -94,4 +94,5 @@ if __name__ == "__main__":
     mybot.rearrange_consumables = rearrange_consumables
     mybot.rearrange_hand = rearrange_hand
 
+    mybot.start_balatro_instance()
     mybot.run()

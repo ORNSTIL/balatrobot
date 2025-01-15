@@ -12,7 +12,7 @@ class FlushBot(Bot):
         cache_state("skip_or_select_blind", G)
         return [Actions.SELECT_BLIND]
 
-    def play_flushes(self, G):
+    def select_cards_from_hand(self, G):
         global t
         global first_time
         t += 1
@@ -96,7 +96,7 @@ def benchmark_multi_instance():
     first_time = None
 
     # Benchmark the game states per second for different bot counts
-    bot_counts = range(1, 21, 3)
+    bot_counts = [1] # range(1, 21, 3)
     for bot_count in bot_counts:
         target_t = 50 * bot_count
         t = 0
