@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import os
 import sys
 import json
 import socket
@@ -8,6 +9,8 @@ from enum import Enum
 from gamestates import cache_state
 import subprocess
 import random
+import platform
+from pathlib import Path
 
 
 class State(Enum):
@@ -117,20 +120,41 @@ class Bot:
     def rearrange_hand(self, G):
         raise NotImplementedError("Error: Bot.rearrange_hand must be implemented.")
 
+    # Attempts to start balatro with resonable defaults for environment
     def start_balatro_instance(self):
-        balatro_exec_path = (
-            r"/usr/bin/env"
-        )
-        self.balatro_instance = subprocess.Popen(
-            [balatro_exec_path,
-             'WINEDLLOVERRIDES=version=n,b',
-             'STEAM_COMPAT_CLIENT_INSTALL_PATH=/home/benja/.local/share/Steam',
-             'STEAM_COMPAT_DATA_PATH=/home/benja/.local/share/Steam/steamapps/compatdata/2379780',
-             '/home/benja/.local/share/Steam/compatibilitytools.d/GE-Proton9-4/proton',
-             'waitforexitandrun',
-             '/home/benja/.local/share/Steam/steamapps/common/Balatro/Balatro.exe',
-             str(self.bot_port)]
-        )
+        if platform.system() == "Linux":
+            balatro_exec_path = os.path.expandvars(
+                "$HOME/.local/share/Steam/steamapps/common/Balatro/Balatro.exe"
+            )
+            client_install_path = os.path.expandvars("$HOME/.local/share/Steam")
+            data_path = os.path.expandvars(
+                "$HOME/.local/share/Steam/steamapps/compatdata/2379780"
+            )
+            PROTON_VERSION = "GE-Proton9-4"
+            proton_path = os.path.expandvars(
+                f"$HOME/.local/share/Steam/compatibilitytools.d/{PROTON_VERSION}/proton"
+            )
+            self.balatro_instance = subprocess.Popen(
+                [
+                    "/usr/bin/env",
+                    "WINEDLLOVERRIDES=version=n,b",
+                    f"STEAM_COMPAT_CLIENT_INSTALL_PATH={client_install_path}",
+                    f"STEAM_COMPAT_DATA_PATH={data_path}",
+                    proton_path,
+                    "waitforexitandrun",
+                    balatro_exec_path,
+                    str(self.bot_port),
+                ]
+            )
+        elif platform.system() == "Windows":
+            balatro_exec_path = (
+                r"C:\Program Files (x86)\Steam\steamapps\common\Balatro\Balatro.exe"
+            )
+            self.balatro_instance = subprocess.Popen(
+                [balatro_exec_path, str(self.bot_port)]
+            )
+        else:
+            raise RuntimeError("Unknown platform for staring balatro.")
 
     def stop_balatro_instance(self):
         if self.balatro_instance:
