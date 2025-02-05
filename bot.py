@@ -272,5 +272,6 @@ class Bot:
                 self.sock.connect(self.addr)
 
     def run(self):
+        self.running = True
         while self.running:
             self.run_step()
