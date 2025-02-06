@@ -11,6 +11,7 @@ import subprocess
 import random
 import platform
 from pathlib import Path
+import abc
 
 
 class State(Enum):
@@ -63,8 +64,8 @@ class Bot:
         self,
         deck: str,
         stake: int = 1,
-        seed: str = None,
-        challenge: str = None,
+        seed: str | None = None,
+        challenge: str | None = None,
         bot_port: int = 12346,
     ):
         self.G = None
@@ -83,40 +84,49 @@ class Bot:
 
         self.state = {}
 
+    @abc.abstractmethod
     def skip_or_select_blind(self, G):
         raise NotImplementedError(
             "Error: Bot.skip_or_select_blind must be implemented."
         )
 
+    @abc.abstractmethod
     def select_cards_from_hand(self, G):
         raise NotImplementedError(
             "Error: Bot.select_cards_from_hand must be implemented."
         )
 
+    @abc.abstractmethod
     def select_shop_action(self, G):
         raise NotImplementedError("Error: Bot.select_shop_action must be implemented.")
 
+    @abc.abstractmethod
     def select_booster_action(self, G):
         raise NotImplementedError(
             "Error: Bot.select_booster_action must be implemented."
         )
 
+    @abc.abstractmethod
     def sell_jokers(self, G):
         raise NotImplementedError("Error: Bot.sell_jokers must be implemented.")
 
+    @abc.abstractmethod
     def rearrange_jokers(self, G):
         raise NotImplementedError("Error: Bot.rearrange_jokers must be implemented.")
 
+    @abc.abstractmethod
     def use_or_sell_consumables(self, G):
         raise NotImplementedError(
             "Error: Bot.use_or_sell_consumables must be implemented."
         )
 
+    @abc.abstractmethod
     def rearrange_consumables(self, G):
         raise NotImplementedError(
             "Error: Bot.rearrange_consumables must be implemented."
         )
 
+    @abc.abstractmethod
     def rearrange_hand(self, G):
         raise NotImplementedError("Error: Bot.rearrange_hand must be implemented.")
 
@@ -200,6 +210,7 @@ class Bot:
 
     def chooseaction(self):
         if self.G["state"] == State.GAME_OVER:
+            print("ending game")
             self.running = False
 
         match self.G["waitingFor"]:
@@ -272,6 +283,6 @@ class Bot:
                 self.sock.connect(self.addr)
 
     def run(self):
-        self.running = True
+        self.run_step()
         while self.running:
             self.run_step()

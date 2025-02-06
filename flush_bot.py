@@ -13,6 +13,11 @@ class FlushBot(Bot):
         return [Actions.SELECT_BLIND]
 
     def select_cards_from_hand(self, G):
+        action = self._select_cards_from_hand(G)
+        print(action)
+        return action
+
+    def _select_cards_from_hand(self, G):
         global t
         global first_time
         t += 1

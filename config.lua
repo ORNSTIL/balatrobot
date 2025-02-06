@@ -3,9 +3,9 @@ BALATRO_BOT_CONFIG = {
     port = '12345', -- Port for the bot to listen on, overwritten by arg[1]
     -- dt = 8.0/60.0, -- Tells the game that every update is dt seconds long
     uncap_fps = false,
-    instant_move = false,
+    instant_move = true,
     disable_vsync = false,
-    disable_card_eval_status_text = false, -- e.g. +10 when scoring a queen
+    disable_card_eval_status_text = true, -- e.g. +10 when scoring a queen
     frame_ratio = 1, -- Draw every 100th frame, set to 1 for normal rendering
 }
 

@@ -38,9 +38,7 @@ class RandomBot(Bot):
 
 
 if __name__ == "__main__":
-    bot = RandomBot(
-        deck="Blue Deck", stake=1, seed=None, challenge=None, bot_port=12348
-    )
+    bot = RandomBot(deck="Blue Deck", stake=1, seed=None, challenge=None, bot_port=12348)
     bot.start_balatro_instance()
     time.sleep(20)
     bot.run()
