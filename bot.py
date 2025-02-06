@@ -209,10 +209,6 @@ class Bot:
         return "".join(random.choices("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", k=7))
 
     def chooseaction(self):
-        if self.G["state"] == State.GAME_OVER:
-            print("ending game")
-            self.running = False
-
         match self.G["waitingFor"]:
             case "start_run":
                 seed = self.seed
@@ -254,6 +250,10 @@ class Bot:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.sock.settimeout(1)
             self.sock.connect(self.addr)
+
+        if self.G and self.G["state"] == State.GAME_OVER:
+            print("ending game")
+            self.running = False
 
         if self.running:
             self.sendcmd("HELLO")

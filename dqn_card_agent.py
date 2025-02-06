@@ -206,13 +206,18 @@ class DQNPlayBot(Bot):
         return ACTIONS[tensor[0][0]]
 
     def select_cards_from_hand(self, G):
+        print(self.G)
         hand = self.hand_to_ints()
         enc_hand = F.one_hot(torch.tensor([hand]), num_classes=len(SUITS) * len(RANKS))
         # currently the state is just the state of the hand (multi-hot encoded)
         state = enc_hand.sum(dim=1).to(device, dtype=torch.float)
 
-        action = self.select_action(state)
-        command = self.action_to_command(action)
+        while True:
+            action = self.select_action(state)
+            command = self.action_to_command(action)
+            # make sure you can actually discard if it wants to discard, otherwise select a new action
+            if command[0] != Actions.DISCARD_HAND or self.G["current_round"]["discards_left"] > 0:
+                break
         print(f"making action: {command}")
         return command
         # observation, reward, terminated, truncated, _ = env.step(action.item())

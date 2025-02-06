@@ -127,6 +127,16 @@ function Utils.getRoundData()
     return _current_round
 end
 
+local function dump_table(f, tab, depth, max_depth)
+  for k, v in pairs(tab) do
+
+    f:write(string.rep("    ", depth)..k.."\n")
+    if (type(v) == "table" and depth < max_depth) then
+      dump_table(f, v, depth + 1, max_depth)
+    end
+  end
+end
+
 function Utils.getGameData()
     local _game = { }
 
@@ -141,7 +151,7 @@ function Utils.getGameData()
         _game.dollars = G.GAME.dollars
         _game.max_jokers = G.GAME.max_jokers
         _game.bankrupt_at = G.GAME.bankrupt_at
-        _game.chips = _game.chips
+        _game.chips = G.GAME.chips
     end
 
     return _game
