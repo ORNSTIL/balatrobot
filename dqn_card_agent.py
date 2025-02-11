@@ -46,14 +46,16 @@ class DQN(nn.Module):
         super(DQN, self).__init__()
         self.layer1 = nn.Linear(n_observations, 128)
         self.layer2 = nn.Linear(128, 128)
-        self.layer3 = nn.Linear(128, n_actions)
+        self.layer3 = nn.Linear(128, 256)
+        self.layer4 = nn.Linear(256, n_actions)
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
     def forward(self, x):
         x = F.relu(self.layer1(x))
         x = F.relu(self.layer2(x))
-        return self.layer3(x)
+        x = F.relu(self.layer3(x))
+        return self.layer4(x)
 
 
 # episode_durations = []
@@ -134,7 +136,6 @@ N_OBSERVATIONS = N_CARDS
 MAX_CARDS_PER_HAND = 5
 PLAY_OPTIONS = [Actions.PLAY_HAND, Actions.DISCARD_HAND]
 N_ACTIONS = N_CARDS * MAX_CARDS_PER_HAND + len(PLAY_OPTIONS)
-print(N_ACTIONS)
 
 # BATCH_SIZE is the number of transitions sampled from the replay buffer
 # GAMMA is the discount factor as mentioned in the previous section
@@ -147,7 +148,7 @@ BATCH_SIZE = 32
 GAMMA = 0.9
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 100
+EPS_DECAY = 500
 TAU = 0.05
 LR = 1e-4
 
@@ -203,34 +204,35 @@ class DQNPlayBot(Bot):
             dim=1,
         ).to(device)
 
+    def build_choices_from_action(self, actions):
+        card_choices = (
+            actions[:, : N_CARDS * MAX_CARDS_PER_HAND]
+            .view(-1, MAX_CARDS_PER_HAND, N_CARDS)
+            .max(2)
+            .indices
+        )
+        option_choice = (
+            actions[:, N_CARDS * MAX_CARDS_PER_HAND :].max(1).indices
+        )
+        return torch.cat((card_choices, option_choice.unsqueeze(1)), dim=1)
+        
+
     def select_action(self, state):
         sample = random.random()
         eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(
             -1.0 * self.steps_done / EPS_DECAY
         )
+        print(f"Current threshold: {eps_threshold}")
         self.steps_done += 1
         if sample > eps_threshold:
+            print("performing neural action...")
             with torch.no_grad():
                 # t.max(1) will return the largest column value of each row.
                 # second column on max result is index of where max element was
                 # found, so we pick action with the larger expected reward.
 
                 # the model outputs the cards it "wants" to play five times (can be any card in the deck)
-                actions = self.policy_net(state)
-                card_choices = (
-                    actions[:, : N_CARDS * MAX_CARDS_PER_HAND]
-                    .view(-1, MAX_CARDS_PER_HAND, N_CARDS)
-                    .max(2)
-                    .indices
-                )
-                option_choice = (
-                    actions[:, N_CARDS * MAX_CARDS_PER_HAND :].max(1).indices
-                )
-                print(card_choices)
-                print(option_choice)
-                action = torch.cat((card_choices, option_choice.unsqueeze(1)), dim=1)
-
-                return action
+                return self.build_choices_from_action(self.policy_net(state))
         else:
             return self.random_action()
 
@@ -272,6 +274,20 @@ class DQNPlayBot(Bot):
         # duplicate cards in hand
         return not [item for item, count in Counter(command[1]).items() if count > 1]
 
+    def gather_action_weights(self, action_tensor, action_batch):
+        cards_action_values = (
+            action_tensor[:, : N_CARDS * MAX_CARDS_PER_HAND]
+            .view(-1, MAX_CARDS_PER_HAND, N_CARDS)
+            .gather(
+                2, action_batch[:, :MAX_CARDS_PER_HAND].view(-1, MAX_CARDS_PER_HAND, 1)
+            )
+            .view(-1, MAX_CARDS_PER_HAND)
+        )
+        option_action_values = action_tensor[:, N_CARDS * MAX_CARDS_PER_HAND :].gather(
+            1, action_batch[:, MAX_CARDS_PER_HAND:]
+        )
+        return torch.cat((cards_action_values, option_action_values), dim=1)
+
     def optimize_model(self):
         if len(self.memory) < BATCH_SIZE:
             return
@@ -299,25 +315,24 @@ class DQNPlayBot(Bot):
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken. These are the actions which would've been taken
         # for each batch state according to policy_net
-        state_action_values = self.policy_net(state_batch).gather(1, action_batch)
-        print(state_action_values)
+        state_action_values = self.gather_action_weights(self.policy_net(state_batch), action_batch)
 
         # Compute V(s_{t+1}) for all next states.
         # Expected values of actions for non_final_next_states are computed based
         # on the "older" target_net; selecting their best reward with max(1).values
         # This is merged based on the mask, such that we'll have either the expected
         # state value or 0 in case the state was final.
-        next_state_values = torch.zeros((BATCH_SIZE, N_ACTIONS), device=device)
+        next_state_values = torch.zeros((BATCH_SIZE, MAX_CARDS_PER_HAND + 1), device=device)
         with torch.no_grad():
-            next_state_values[non_final_mask] = (
-                self.target_net(non_final_next_states).max(1).values
-            )
+            next_actions = self.target_net(non_final_next_states)
+            next_choices = self.build_choices_from_action(next_actions)
+            next_state_values[non_final_mask] = self.gather_action_weights(next_actions, next_choices)
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
         # Compute Huber loss
         criterion = nn.SmoothL1Loss()
-        loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
+        loss = criterion(state_action_values, expected_state_action_values)
 
         # Optimize the model
         self.optimizer.zero_grad()
@@ -326,16 +341,13 @@ class DQNPlayBot(Bot):
         torch.nn.utils.clip_grad_value_(self.policy_net.parameters(), 100)
         self.optimizer.step()
 
-    def learn(self, state, reward):
-        reward = torch.tensor([reward], device=device)
+    def learn(self, state, reward, is_final):
+        reward = torch.tensor([[reward]], device=device)
 
-        if reward < 0:
+        if is_final:
             state_tensor = None
         else:
-            state_tensor = torch.tensor(
-                state, dtype=torch.float32, device=device
-            ).unsqueeze(0)
-
+            state_tensor = state
         # Store the transition in memory
         if self.last_state is not None:
             self.memory.push(self.last_state, self.last_action, state_tensor, reward)
@@ -355,25 +367,33 @@ class DQNPlayBot(Bot):
 
     def select_cards_from_hand(self, G):
         score = self.G["chips"]
-        reward = score - self.last_score
+        reward = max(score - self.last_score, 0)
+        is_final = reward < 0
         print(f"reward delta: {reward}")
 
         hand = self.hand_to_ints()
         enc_hand = F.one_hot(torch.tensor([hand]), num_classes=len(SUITS) * len(RANKS))
         # currently the state is just the state of the hand (multi-hot encoded)
         state = enc_hand.sum(dim=1).to(device, dtype=torch.float)
-        # self.learn(state, reward)
 
-        action = self.select_action(state)
-        command = self.action_to_command(action)
-        # if the model generates a stupid command, act randomly instead (sort of a penalty)
-        while not self.validate_command(command):
-            command = self.action_to_command(self.random_action())
+        command = None
+        while True:
+            self.learn(state, reward, is_final)
 
-        self.last_score = score
-        self.last_state = state
-        self.last_action = action
-        print(f"making action: {command}")
+            action = self.select_action(state)
+            command = self.action_to_command(action)
+
+            self.last_score = score
+            self.last_state = state
+            self.last_action = action
+
+            if self.validate_command(command):
+                break
+            else:
+                print("Invalid action, applying penalty")
+                reward = -25
+                is_final = False
+        print(f"Commiting action: {command}")
         return command
 
     def select_shop_action(self, G):

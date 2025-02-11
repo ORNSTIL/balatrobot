@@ -140,7 +140,7 @@ class Bot:
             data_path = os.path.expandvars(
                 "$HOME/.local/share/Steam/steamapps/compatdata/2379780"
             )
-            PROTON_VERSION = "GE-Proton9-4"
+            PROTON_VERSION = "GE-Proton9-24"
             proton_path = os.path.expandvars(
                 f"$HOME/.local/share/Steam/compatibilitytools.d/{PROTON_VERSION}/proton"
             )
