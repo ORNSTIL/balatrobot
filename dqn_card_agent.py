@@ -127,7 +127,7 @@ class DQNPlayBot(Bot):
         self.last_score = 0
 
     def load_checkpoint(self, checkpoint_path: os.PathLike):
-        checkpoint = torch.load(checkpoint_path, weights_only=True)
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
         self.run_start = datetime.fromisoformat(checkpoint["run_start"])
         self.steps_done = checkpoint["steps_done"]
         self.policy_net.load_state_dict(checkpoint["policy_state_dict"])
