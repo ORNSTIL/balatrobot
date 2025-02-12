@@ -1,8 +1,11 @@
 import math
-from os import stat
+import os
 import random
 from collections import Counter, namedtuple, deque
-from itertools import product, combinations
+import random
+import time
+from pathlib import Path
+from datetime import datetime
 import sys
 
 import torch
@@ -10,9 +13,51 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-import random
 from bot import Bot, Actions
-import time
+
+# BATCH_SIZE is the number of transitions sampled from the replay buffer
+# GAMMA is the discount factor as mentioned in the previous section
+# EPS_START is the starting value of epsilon
+# EPS_END is the final value of epsilon
+# EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
+# TAU is the update rate of the target network
+# LR is the learning rate of the ``AdamW`` optimizer
+BATCH_SIZE = 64
+GAMMA = 0.95
+EPS_START = 1.0
+EPS_END = 0.05
+EPS_DECAY = 10000
+TAU = 0.01
+LR = 1e-4
+CHECKPOINT_PATH = Path(".checkpoint")
+CHECKPOINT_INTERVAL = 250
+TIME_FORMAT_STRING = "%Y%m%dT%H%M%S"
+
+HAND_SIZE = 8
+MAX_CARDS = 5
+SUITS = ["Diamonds", "Clubs", "Hearts", "Spades"]
+RANKS = [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "Jack",
+    "Queen",
+    "King",
+    "Ace",
+]
+N_CARDS = len(SUITS) * len(RANKS)
+N_OBSERVATIONS = N_CARDS
+
+MAX_CARDS_PER_HAND = 5
+PLAY_OPTIONS = [Actions.PLAY_HAND, Actions.DISCARD_HAND]
+N_ACTIONS = N_CARDS * MAX_CARDS_PER_HAND + len(PLAY_OPTIONS)
 
 # if GPU is to be used
 device = torch.device(
@@ -58,101 +103,6 @@ class DQN(nn.Module):
         return self.layer4(x)
 
 
-# episode_durations = []
-#
-#
-# def optimize_model():
-#     if len(memory) < BATCH_SIZE:
-#         return
-#     transitions = memory.sample(BATCH_SIZE)
-#     # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
-#     # detailed explanation). This converts batch-array of Transitions
-#     # to Transition of batch-arrays.
-#     batch = Transition(*zip(*transitions))
-#
-#     # Compute a mask of non-final states and concatenate the batch elements
-#     # (a final state would've been the one after which simulation ended)
-#     non_final_mask = torch.tensor(
-#         tuple(map(lambda s: s is not None, batch.next_state)),
-#         device=device,
-#         dtype=torch.bool,
-#     )
-#     non_final_next_states = torch.cat([s for s in batch.next_state if s is not None])
-#     state_batch = torch.cat(batch.state)
-#     action_batch = torch.cat(batch.action)
-#     reward_batch = torch.cat(batch.reward)
-#
-#     # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
-#     # columns of actions taken. These are the actions which would've been taken
-#     # for each batch state according to policy_net
-#     state_action_values = policy_net(state_batch).gather(1, action_batch)
-#
-#     # Compute V(s_{t+1}) for all next states.
-#     # Expected values of actions for non_final_next_states are computed based
-#     # on the "older" target_net; selecting their best reward with max(1).values
-#     # This is merged based on the mask, such that we'll have either the expected
-#     # state value or 0 in case the state was final.
-#     next_state_values = torch.zeros(BATCH_SIZE, device=device)
-#     with torch.no_grad():
-#         next_state_values[non_final_mask] = (
-#             target_net(non_final_next_states).max(1).values
-#         )
-#     # Compute the expected Q values
-#     expected_state_action_values = (next_state_values * GAMMA) + reward_batch
-#
-#     # Compute Huber loss
-#     criterion = nn.SmoothL1Loss()
-#     loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
-#
-#     # Optimize the model
-#     optimizer.zero_grad()
-#     loss.backward()
-#     # In-place gradient clipping
-#     torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
-#     optimizer.step()
-
-HAND_SIZE = 8
-MAX_CARDS = 5
-SUITS = ["Diamonds", "Clubs", "Hearts", "Spades"]
-RANKS = [
-    "1",
-    "2",
-    "3",
-    "4",
-    "5",
-    "6",
-    "7",
-    "8",
-    "9",
-    "10",
-    "Jack",
-    "Queen",
-    "King",
-    "Ace",
-]
-N_CARDS = len(SUITS) * len(RANKS)
-N_OBSERVATIONS = N_CARDS
-
-MAX_CARDS_PER_HAND = 5
-PLAY_OPTIONS = [Actions.PLAY_HAND, Actions.DISCARD_HAND]
-N_ACTIONS = N_CARDS * MAX_CARDS_PER_HAND + len(PLAY_OPTIONS)
-
-# BATCH_SIZE is the number of transitions sampled from the replay buffer
-# GAMMA is the discount factor as mentioned in the previous section
-# EPS_START is the starting value of epsilon
-# EPS_END is the final value of epsilon
-# EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
-# TAU is the update rate of the target network
-# LR is the learning rate of the ``AdamW`` optimizer
-BATCH_SIZE = 32
-GAMMA = 0.9
-EPS_START = 0.9
-EPS_END = 0.05
-EPS_DECAY = 500
-TAU = 0.05
-LR = 1e-4
-
-
 class DQNPlayBot(Bot):
     def __init__(
         self,
@@ -164,6 +114,7 @@ class DQNPlayBot(Bot):
     ):
         super().__init__(deck, stake, seed, challenge, bot_port)
 
+        self.run_start = datetime.now()
         self.steps_done = 0
         self.policy_net = DQN(N_OBSERVATIONS, N_ACTIONS).to(device)
         self.target_net = DQN(N_OBSERVATIONS, N_ACTIONS).to(device)
@@ -174,6 +125,30 @@ class DQNPlayBot(Bot):
         self.last_state = None
         self.last_action = None
         self.last_score = 0
+
+    def load_checkpoint(self, checkpoint_path: os.PathLike):
+        checkpoint = torch.load(checkpoint_path, weights_only=True)
+        self.run_start = datetime.fromisoformat(checkpoint["run_start"])
+        self.steps_done = checkpoint["steps_done"]
+        self.policy_net.load_state_dict(checkpoint["policy_state_dict"])
+        self.target_net.load_state_dict(checkpoint["target_state_dict"])
+        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
+    def checkpoint(self):
+        CHECKPOINT_PATH.mkdir(parents=True, exist_ok=True)
+        checkpoint_path = (
+            CHECKPOINT_PATH / f"{self.run_start.strftime(TIME_FORMAT_STRING)}-{self.steps_done}.pt"
+        )
+        torch.save(
+            {
+                "run_start": self.run_start.isoformat(),
+                "steps_done": self.steps_done,
+                "policy_state_dict": self.policy_net.state_dict(),
+                "target_state_dict": self.target_net.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+            },
+            checkpoint_path,
+        )
 
     def skip_or_select_blind(self, G):
         return [Actions.SELECT_BLIND]
@@ -211,19 +186,17 @@ class DQNPlayBot(Bot):
             .max(2)
             .indices
         )
-        option_choice = (
-            actions[:, N_CARDS * MAX_CARDS_PER_HAND :].max(1).indices
-        )
+        option_choice = actions[:, N_CARDS * MAX_CARDS_PER_HAND :].max(1).indices
         return torch.cat((card_choices, option_choice.unsqueeze(1)), dim=1)
-        
 
-    def select_action(self, state):
+    def select_action(self, state, advance_steps=True):
         sample = random.random()
         eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(
             -1.0 * self.steps_done / EPS_DECAY
         )
         print(f"Current threshold: {eps_threshold}")
-        self.steps_done += 1
+        if advance_steps:
+            self.steps_done += 1
         if sample > eps_threshold:
             print("performing neural action...")
             with torch.no_grad():
@@ -315,18 +288,24 @@ class DQNPlayBot(Bot):
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken. These are the actions which would've been taken
         # for each batch state according to policy_net
-        state_action_values = self.gather_action_weights(self.policy_net(state_batch), action_batch)
+        state_action_values = self.gather_action_weights(
+            self.policy_net(state_batch), action_batch
+        )
 
         # Compute V(s_{t+1}) for all next states.
         # Expected values of actions for non_final_next_states are computed based
         # on the "older" target_net; selecting their best reward with max(1).values
         # This is merged based on the mask, such that we'll have either the expected
         # state value or 0 in case the state was final.
-        next_state_values = torch.zeros((BATCH_SIZE, MAX_CARDS_PER_HAND + 1), device=device)
+        next_state_values = torch.zeros(
+            (BATCH_SIZE, MAX_CARDS_PER_HAND + 1), device=device
+        )
         with torch.no_grad():
             next_actions = self.target_net(non_final_next_states)
             next_choices = self.build_choices_from_action(next_actions)
-            next_state_values[non_final_mask] = self.gather_action_weights(next_actions, next_choices)
+            next_state_values[non_final_mask] = self.gather_action_weights(
+                next_actions, next_choices
+            )
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
@@ -376,11 +355,16 @@ class DQNPlayBot(Bot):
         # currently the state is just the state of the hand (multi-hot encoded)
         state = enc_hand.sum(dim=1).to(device, dtype=torch.float)
 
+        if self.steps_done % CHECKPOINT_INTERVAL == 0:
+            self.checkpoint()
+
+        advance_steps = True
         command = None
         while True:
             self.learn(state, reward, is_final)
 
-            action = self.select_action(state)
+            action = self.select_action(state, advance_steps)
+            advance_steps = False
             command = self.action_to_command(action)
 
             self.last_score = score
@@ -391,7 +375,7 @@ class DQNPlayBot(Bot):
                 break
             else:
                 print("Invalid action, applying penalty")
-                reward = -25
+                reward = -15
                 is_final = False
         print(f"Commiting action: {command}")
         return command
@@ -424,6 +408,10 @@ if __name__ == "__main__":
     bot = DQNPlayBot(
         deck="Blue Deck", stake=1, seed=None, challenge=None, bot_port=12348
     )
+
+    if len(sys.argv) >= 2:
+        bot.load_checkpoint(Path(sys.argv[1]))
+
     bot.start_balatro_instance()
     time.sleep(10)
 
